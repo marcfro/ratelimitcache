@@ -1,7 +1,8 @@
 from django.http import HttpResponseForbidden
 from django.core.cache import cache
 from datetime import datetime, timedelta
-import functools, sha
+import functools
+from django.utils.hashcompat import sha_constructor
 
 
 class ratelimit(object):
@@ -26,8 +27,7 @@ class ratelimit(object):
         if not self.should_ratelimit(request):
             return fn(request, *args, **kwargs)
 
-        counts = self.get_counters(request).values()
-
+        counts = [int(x) for x in self.get_counters(request).values()]
         # Increment rate limiting counter
         self.cache_incr(self.current_key(request))
 
@@ -44,7 +44,7 @@ class ratelimit(object):
         # memcache is only backend that can increment atomically
         try:
             # add first, to ensure the key exists
-            cache._cache.add(key, 0, time=self.expire_after())
+            cache._cache.add(key, 0, self.expire_after())
             cache._cache.incr(key)
         except AttributeError:
             cache.set(key, cache.get(key, 0) + 1, self.expire_after())
@@ -97,6 +97,6 @@ class ratelimit_post(ratelimit):
         # IP address and key_field (if it is set)
         extra = super(ratelimit_post, self).key_extra(request)
         if self.key_field:
-            value = sha.new(request.POST.get(self.key_field, '')).hexdigest()
+            value = sha_constructor(request.POST.get(self.key_field, '')).hexdigest()
             extra += '-' + value
         return extra
